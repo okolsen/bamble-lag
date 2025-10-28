@@ -1,231 +1,230 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
-// Konstanter
+// Enkel versjon: KUN Enhetsregisteret (FLI) i Bamble
 const BAMBLE_KOMMUNENR = "4012";
-const ENHETSREGISTERET_URL = "https://data.brreg.no/enhetsregisteret/api/enheter";
-const FRIVILLIGHETSREGISTERET_URL =
-  "https://data.brreg.no/frivillighetsregisteret/api/frivillige-organisasjoner";
-const ICNPO_URL = "https://data.brreg.no/frivillighetsregisteret/api/icnpo-kategorier";
-
-type Mode = "enhet" | "frivillig";
+const ENHETSREGISTERET_URL =
+  "https://data.brreg.no/enhetsregisteret/api/enheter";
 
 interface Enhet {
   organisasjonsnummer: string;
   navn: string;
   organisasjonsform?: { kode?: string };
-  forretningsadresse?: { adresse?: string[]; postnummer?: string; poststed?: string };
-  status?: string; // "Aktiv", "Under avvikling", etc.
+  forretningsadresse?: {
+    adresse?: string[];
+    postnummer?: string;
+    poststed?: string;
+  };
+  status?: string;
 }
-
-interface FrivilligOrganisasjon {
-  organisasjonsnummer: string;
-  navn: string;
-  icnpoKategori?: { kode?: string; navn?: string } | null;
-  registreringsstatus?: string; // "Registrert", etc.
-}
-
-interface IcnpoKategori { kode: string; navn: string }
 
 export default function Lag() {
-  // UI/state
-  const [mode, setMode] = useState<Mode>("enhet");
   const [query, setQuery] = useState("");
-  const [icnpoKode, setIcnpoKode] = useState("");
-  const [activeOnly, setActiveOnly] = useState(false);
-
-  // Data/paging
   const [page, setPage] = useState(0);
-  //const [size, setSize] = useState(50);
-  const size = 50;
-  const [totalPages, setTotalPages] = useState(0);
-  const [totalElements, setTotalElements] = useState(0);
-
-  const [icnpoKategorier, setIcnpoKategorier] = useState<IcnpoKategori[]>([]);
-  const [enheter, setEnheter] = useState<Enhet[]>([]);
-  const [frivillige, setFrivillige] = useState<FrivilligOrganisasjon[]>([]);
+  const [size, setSize] = useState(50);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Hent ICNPO-kategorier (kun én gang)
-  useEffect(() => {
-    fetch(ICNPO_URL)
-      .then((r) => (r.ok ? r.json() : []))
-      .then((data) => setIcnpoKategorier(Array.isArray(data) ? data : []))
-      .catch(() => {});
-  }, []);
+  const [enheter, setEnheter] = useState<Enhet[]>([]);
+  const [totalElements, setTotalElements] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
 
-  // Nullstill side når filtre endres
+  // Nullstill side ved søkeendring/størrelse
   useEffect(() => {
     setPage(0);
-  }, [mode, query, icnpoKode, activeOnly, size]);
+  }, [query, size]);
 
-  // Hent data når parametre endres
+  // Hent data fra Enhetsregisteret (kun FLI i Bamble)
   useEffect(() => {
-    const run = async () => {
+    const fetchData = async () => {
       setLoading(true);
       setError(null);
       try {
-        if (mode === "enhet") {
-          const params = new URLSearchParams({
-            organisasjonsform: "FLI",
-            kommunenummer: BAMBLE_KOMMUNENR,
-            size: String(size),
-            page: String(page),
-          });
-          if (query) {
-            params.set("navn", query);
-            params.set("navnMetodeForSoek", "FORTLOEPENDE");
-          }
-          const res = await fetch(`${ENHETSREGISTERET_URL}?${params.toString()}`);
-          if (!res.ok) throw new Error("Feil fra Enhetsregisteret");
-          const data = await res.json();
-          const list: Enhet[] = data._embedded?.enheter ?? [];
-          setEnheter(list);
-          setFrivillige([]);
-          setTotalPages(data.page?.totalPages ?? 0);
-          setTotalElements(data.page?.totalElements ?? list.length);
-        } else {
-          const params = new URLSearchParams({
-            kommunenummer: BAMBLE_KOMMUNENR,
-            size: String(size),
-            page: String(page),
-          });
-          if (query) params.set("navn", query);
-          if (icnpoKode) params.set("icnpoKategoriKode", icnpoKode);
-          const res = await fetch(`${FRIVILLIGHETSREGISTERET_URL}?${params.toString()}`);
-          if (!res.ok) throw new Error("Feil fra Frivillighetsregisteret");
-          const data = await res.json();
-          const list: FrivilligOrganisasjon[] = data._embedded?.organisasjoner ?? [];
-          setFrivillige(list);
-          setEnheter([]);
-          setTotalPages(data.page?.totalPages ?? 0);
-          setTotalElements(data.page?.totalElements ?? list.length);
+        const params = new URLSearchParams({
+          organisasjonsform: "FLI",
+          kommunenummer: BAMBLE_KOMMUNENR,
+          size: String(size),
+          page: String(page),
+        });
+        if (query) {
+          params.set("navn", query);
+          params.set("navnMetodeForSoek", "FORTLOEPENDE");
         }
+        const res = await fetch(`${ENHETSREGISTERET_URL}?${params.toString()}`);
+        if (!res.ok) throw new Error("Feil fra Enhetsregisteret");
+        const data = await res.json();
+        const list: Enhet[] = data._embedded?.enheter ?? [];
+        setEnheter(list);
+        setTotalPages(data.page?.totalPages ?? 0);
+        setTotalElements(data.page?.totalElements ?? list.length);
       } catch (e: any) {
         setError(e?.message ?? "Noe gikk galt");
       } finally {
         setLoading(false);
       }
     };
-    run();
-  }, [mode, query, icnpoKode, page, size]);
+    fetchData();
+  }, [query, page, size]);
 
-  // Aktive-filter – stabil hookrekkefølge
-  const baseList: any[] = mode === "frivillig" ? frivillige : enheter;
-  const filtered = useMemo(() => {
-    if (!activeOnly) return baseList;
-    return baseList.filter((item: any) => {
-      const status = (item.status ?? item.registreringsstatus ?? "").toString().toLowerCase();
-      return status.includes("aktiv") || status.includes("registrert");
-    });
-  }, [baseList, activeOnly]);
-
-  // UI
   return (
-    <div className="mx-auto max-w-5xl p-4 sm:p-8">
-      <h1 className="text-2xl font-bold tracking-tight">Lag og foreninger i Bamble</h1>
-      <p className="text-sm opacity-70">Kildedata fra Brønnøysundregistrene</p>
-
-      {/* Kontroller */}
-      <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4 rounded-2xl border p-4 shadow-sm">
-        <input
-          className="rounded-2xl border p-3 shadow-sm"
-          placeholder="Søk på navn (idrett, kor, speider...)"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-        />
-
-        <select
-          className="rounded-2xl border p-3 shadow-sm"
-          value={mode}
-          onChange={(e) => setMode(e.target.value as Mode)}
-        >
-          <option value="enhet">Enhetsregisteret (FLI)</option>
-          <option value="frivillig">Frivillighetsregisteret</option>
-        </select>
-
-        <select
-          className="rounded-2xl border p-3 shadow-sm disabled:opacity-50"
-          disabled={mode !== "frivillig"}
-          value={icnpoKode}
-          onChange={(e) => setIcnpoKode(e.target.value)}
-        >
-          <option value="">Alle kategorier</option>
-          {icnpoKategorier.map((k) => (
-            <option key={k.kode} value={k.kode}>{k.kode} — {k.navn}</option>
-          ))}
-        </select>
-
-        <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={activeOnly} onChange={(e) => setActiveOnly(e.target.checked)} />
-          Kun aktive
-        </label>
-      </div>
-
-      {/* Resultat */}
-      {loading && (
-        <div className="mt-6 animate-pulse rounded-2xl border p-6 shadow-sm">Laster…</div>
-      )}
-      {error && (
-        <div className="mt-6 rounded-2xl border border-red-300 bg-red-50 p-4 text-red-800">{error}</div>
-      )}
-
-      {!loading && !error && (
-        <>
-          <div className="mt-4 text-sm opacity-70">{filtered.length} av {totalElements} treff</div>
-          {filtered.length === 0 ? (
-            <div className="mt-4 rounded-2xl border p-6 text-sm opacity-70">Ingen treff på disse filtrene.</div>
-          ) : (
-            <ul className="mt-4 grid gap-3">
-              {filtered.map((item: any) => (
-                <li key={item.organisasjonsnummer} className="rounded-2xl border p-4 shadow-sm">
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <h3 className="text-lg font-semibold leading-tight">{item.navn}</h3>
-                      <div className="mt-1 text-sm opacity-80">Org.nr: {item.organisasjonsnummer}</div>
-                      {mode === "enhet" ? (
-                        <div className="mt-1 text-sm">
-                          <span className="opacity-80">Orgform:</span> {item.organisasjonsform?.kode ?? "-"}
-                          {item.status && (<><span className="opacity-80"> • Status:</span> {item.status}</>)}
-                          {item.forretningsadresse?.poststed && (
-                            <><span className="opacity-80"> • Poststed:</span> {item.forretningsadresse.poststed}</>
-                          )}
-                        </div>
-                      ) : (
-                        <div className="mt-1 text-sm">
-                          {item.icnpoKategori?.kode ? (
-                            <>ICNPO: {item.icnpoKategori.kode} — {item.icnpoKategori.navn}</>
-                          ) : (
-                            <span className="opacity-70">(Ingen kategori)</span>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                    <a
-                      href={`https://w2.brreg.no/enhet/sok/detalj.jsp?orgnr=${item.organisasjonsnummer}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="rounded-xl border px-3 py-2 text-sm hover:shadow"
-                    >
-                      Åpne
-                    </a>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-
-          {/* Paginering */}
-          <div className="mt-6 flex items-center justify-between gap-4">
-            <button onClick={() => setPage((p) => Math.max(0, p - 1))} disabled={page <= 0} className="rounded-xl border px-4 py-2 disabled:opacity-50">Forrige</button>
-            <div className="text-sm opacity-80">Side {page + 1} av {Math.max(1, totalPages)}</div>
-            <button onClick={() => setPage((p) => (page + 1 < totalPages ? p + 1 : p))} disabled={page + 1 >= totalPages} className="rounded-xl border px-4 py-2 disabled:opacity-50">Neste</button>
+    <div className="min-h-screen bg-gradient-to-b from-sky-50 to-white">
+      {/* Toppstripe – inspirasjon fra Bamble */}
+      <header className="bg-sky-900 text-white">
+        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
+          <div className="flex items-center gap-3">
+            {/* Placeholder for logo */}
+            <div className="h-8 w-8 rounded-md bg-sky-700" aria-hidden />
+            <span className="text-lg font-semibold tracking-tight">
+              Bamble kommune
+            </span>
           </div>
-        </>
-      )}
+          <span className="text-xs opacity-80">Lag &amp; foreninger</span>
+        </div>
+      </header>
 
-      <footer className="mt-8 text-xs opacity-60">Kilde: Enhetsregisteret & Frivillighetsregisteret (NLOD).</footer>
+      <main className="mx-auto max-w-6xl px-4 py-6 sm:py-10">
+        <h1 className="text-3xl font-bold tracking-tight text-sky-900">
+          Finn lag og foreninger i Bamble
+        </h1>
+        <p className="mt-1 text-sm text-sky-900/70">
+          Data fra Enhetsregisteret (organisasjonsform FLI). Kommunenummer{" "}
+          {BAMBLE_KOMMUNENR}.
+        </p>
+
+        {/* Kontroller */}
+        <div className="mt-5 grid grid-cols-12 gap-3 rounded-3xl border border-sky-100 bg-white p-4 shadow-sm sm:p-5">
+          {/* BREDT søkefelt */}
+          <div className="col-span-12 md:col-span-9">
+            <label className="mb-1 block text-sm font-medium text-sky-900">
+              Søk
+            </label>
+            <input
+              className="w-full rounded-3xl border border-sky-200 bg-sky-50/30 px-4 py-3 text-base shadow-sm outline-none placeholder:text-slate-500 focus:border-sky-400 focus:ring-2 focus:ring-sky-300"
+              placeholder="Søk på navn (f.eks. idrett, kor, speider)"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+          </div>
+
+          {/* Per side */}
+          <div className="col-span-6 md:col-span-2">
+            <label className="mb-1 block text-sm font-medium text-sky-900">
+              Per side
+            </label>
+            <select
+              className="w-full rounded-3xl border border-sky-200 bg-white px-4 py-3 shadow-sm focus:border-sky-400 focus:ring-2 focus:ring-sky-300"
+              value={size}
+              onChange={(e) => setSize(Number(e.target.value))}
+            >
+              {[25, 50, 100].map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Treffinfo */}
+          <div className="col-span-6 md:col-span-1 flex items-end justify-end text-sm text-sky-900/70">
+            <div>
+              {enheter.length} av {totalElements}
+            </div>
+          </div>
+        </div>
+
+        {/* Resultat */}
+        {loading && (
+          <div className="mt-6 animate-pulse rounded-3xl border border-sky-100 bg-white p-6 shadow-sm">
+            Laster…
+          </div>
+        )}
+        {error && (
+          <div className="mt-6 rounded-3xl border border-red-200 bg-red-50 p-4 text-red-800 shadow-sm">
+            {error}
+          </div>
+        )}
+
+        {!loading && !error && (
+          <>
+            {enheter.length === 0 ? (
+              <div className="mt-6 rounded-3xl border border-sky-100 bg-white p-6 text-sm text-sky-900/70 shadow-sm">
+                Ingen treff på disse filtrene.
+              </div>
+            ) : (
+              <ul className="mt-6 grid gap-4">
+                {enheter.map((item) => (
+                  <li
+                    key={item.organisasjonsnummer}
+                    className="rounded-3xl border border-sky-100 bg-white p-5 shadow-sm transition hover:shadow-md"
+                  >
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <h3 className="text-lg font-semibold text-sky-900">
+                          {item.navn}
+                        </h3>
+                        <div className="mt-1 text-sm text-sky-900/70">
+                          Org.nr: {item.organisasjonsnummer}
+                        </div>
+                        <div className="mt-1 text-sm text-sky-900/80">
+                          <span className="opacity-70">Orgform:</span>{" "}
+                          {item.organisasjonsform?.kode ?? "-"}
+                          {item.status && (
+                            <>
+                              <span className="opacity-70"> • Status:</span>{" "}
+                              {item.status}
+                            </>
+                          )}
+                          {item.forretningsadresse?.poststed && (
+                            <>
+                              <span className="opacity-70"> • Poststed:</span>{" "}
+                              {item.forretningsadresse.poststed}
+                            </>
+                          )}
+                        </div>
+                      </div>
+                      <a
+                        href={`https://virksomhet.brreg.no/nb/oppslag/enheter/${item.organisasjonsnummer}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="rounded-2xl border border-sky-200 px-3 py-2 text-sm text-sky-900 hover:bg-sky-50 hover:shadow"
+                      >
+                        Åpne
+                      </a>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            {/* Paginering */}
+            <div className="mt-6 flex items-center justify-between gap-4">
+              <button
+                onClick={() => setPage((p) => Math.max(0, p - 1))}
+                disabled={page <= 0}
+                className="rounded-2xl border border-sky-200 bg-white px-4 py-2 text-sky-900 shadow-sm disabled:opacity-50 hover:bg-sky-50"
+              >
+                Forrige
+              </button>
+              <div className="text-sm text-sky-900/70">
+                Side {page + 1} av {Math.max(1, totalPages)}
+              </div>
+              <button
+                onClick={() =>
+                  setPage((p) => (page + 1 < totalPages ? p + 1 : p))
+                }
+                disabled={page + 1 >= totalPages}
+                className="rounded-2xl border border-sky-200 bg-white px-4 py-2 text-sky-900 shadow-sm disabled:opacity-50 hover:bg-sky-50"
+              >
+                Neste
+              </button>
+            </div>
+          </>
+        )}
+
+        <footer className="mt-10 text-xs text-sky-900/60">
+          Data: Enhetsregisteret (Brønnøysundregistrene) — NLOD.
+        </footer>
+      </main>
     </div>
   );
 }
