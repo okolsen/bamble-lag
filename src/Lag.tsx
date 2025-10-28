@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 // Konstanter
 const BAMBLE_KOMMUNENR = "4012";
@@ -35,7 +35,8 @@ export default function Lag() {
 
   // Data/paging
   const [page, setPage] = useState(0);
-  const [size, setSize] = useState(50);
+  //const [size, setSize] = useState(50);
+  const size = 50;
   const [totalPages, setTotalPages] = useState(0);
   const [totalElements, setTotalElements] = useState(0);
 
