@@ -154,12 +154,10 @@ export default function Lag() {
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
           <div className="flex items-center gap-3">
             {/* Kommunelogo fra /public/logo.png */}
-            <img src="/logo.png" alt="Bamble kommune" className="h-8 w-auto" />
-            <span className="text-lg font-semibold tracking-tight">
-              Bamble kommune
-            </span>
+            <img src="/logo.png" alt="Bamble kommune" className="h-20 w-auto" />
+            
           </div>
-          <span className="text-xs opacity-80">Lag &amp; foreninger</span>
+          
         </div>
       </header>
 
