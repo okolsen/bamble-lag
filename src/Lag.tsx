@@ -150,7 +150,7 @@ export default function Lag() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-sky-50 to-white">
       {/* Toppstripe – inspirasjon fra Bamble */}
-      <header className="bg-sky-900 text-white">
+      <header className="bg-white-900 text-white">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
           <div className="flex items-center gap-3">
             {/* Kommunelogo fra /public/logo.png */}
