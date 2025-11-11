@@ -5,6 +5,9 @@ const BAMBLE_KOMMUNENR = "4012";
 const ENHETSREGISTERET_URL =
   "https://data.brreg.no/enhetsregisteret/api/enheter";
 
+// hvor mye vi henter per runde fra brreg
+const FETCH_PAGE_SIZE = 200;
+
 interface Enhet {
   organisasjonsnummer: string;
   navn: string;
@@ -50,9 +53,8 @@ export default function Lag() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [enheter, setEnheter] = useState<Enhet[]>([]);
-  const [totalElements, setTotalElements] = useState(0);
-  const [totalPages, setTotalPages] = useState(0);
+  // vi lagrer ALLE enheter her
+  const [allEnheter, setAllEnheter] = useState<Enhet[]>([]);
 
   // Hjelpere
   const normUrl = (u?: string) => {
@@ -108,44 +110,64 @@ export default function Lag() {
     setPage(0);
   }, [query, size, statusFilter]);
 
-  // Hent data fra Enhetsregisteret (kun FLI i Bamble)
+  // Hent ALLE FLI i Bamble én gang, så søker vi lokalt
   useEffect(() => {
-    const fetchData = async () => {
+    const fetchAll = async () => {
       setLoading(true);
       setError(null);
       try {
-        const params = new URLSearchParams({
-          organisasjonsform: "FLI",
-          kommunenummer: BAMBLE_KOMMUNENR,
-          size: String(size),
-          page: String(page),
-        });
-        if (query) {
-          params.set("navn", query);
-          params.set("navnMetodeForSoek", "FORTLOEPENDE");
+        let currentPage = 0;
+        let totalPages = 1;
+        const collected: Enhet[] = [];
+
+        while (currentPage < totalPages) {
+          const params = new URLSearchParams({
+            organisasjonsform: "FLI",
+            kommunenummer: BAMBLE_KOMMUNENR,
+            size: String(FETCH_PAGE_SIZE),
+            page: String(currentPage),
+          });
+
+          const res = await fetch(`${ENHETSREGISTERET_URL}?${params.toString()}`);
+          if (!res.ok) throw new Error("Feil fra Enhetsregisteret");
+          const data = await res.json();
+
+          const list: Enhet[] = data._embedded?.enheter ?? [];
+          collected.push(...list);
+
+          // oppdater paging-info fra API-et
+          totalPages = data.page?.totalPages ?? 1;
+          currentPage = currentPage + 1;
         }
-        const res = await fetch(`${ENHETSREGISTERET_URL}?${params.toString()}`);
-        if (!res.ok) throw new Error("Feil fra Enhetsregisteret");
-        const data = await res.json();
-        const list: Enhet[] = data._embedded?.enheter ?? [];
-        setEnheter(list);
-        setTotalPages(data.page?.totalPages ?? 0);
-        setTotalElements(data.page?.totalElements ?? list.length);
+
+        setAllEnheter(collected);
       } catch (e: any) {
         setError(e?.message ?? "Noe gikk galt");
       } finally {
         setLoading(false);
       }
     };
-    fetchData();
-  }, [query, page, size]);
+    fetchAll();
+  }, []);
 
-  // Klientside-filter for status (bruk avledet statuskode)
-  const filtered = enheter.filter((e) => {
+  // Nå gjør vi søk og filtrering i frontend
+  const filtered = allEnheter.filter((e) => {
+    const q = query.trim().toLowerCase();
+
+    // søk i NAVN – gir treff på "idrett" i "IDRETTSLAG"
+    const matchesQuery = q ? e.navn.toLowerCase().includes(q) : true;
+    if (!matchesQuery) return false;
+
+    // statusfilter som før
     if (!statusFilter) return true;
     const { code } = deriveStatus(e);
     return code === statusFilter;
   });
+
+  // paginering etter filtrering
+  const totalElements = filtered.length;
+  const totalPages = Math.max(1, Math.ceil(totalElements / size));
+  const visible = filtered.slice(page * size, page * size + size);
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-sky-50 to-white">
@@ -155,9 +177,7 @@ export default function Lag() {
           <div className="flex items-center gap-3">
             {/* Kommunelogo fra /public/logo.png */}
             <img src="/logo.png" alt="Bamble kommune" className="h-20 w-auto" />
-            
           </div>
-          
         </div>
       </header>
 
@@ -225,7 +245,7 @@ export default function Lag() {
           {/* Treffinfo */}
           <div className="col-span-12 md:col-span-1 flex items-end justify-end text-sm text-sky-900/70">
             <div>
-              {filtered.length} av {totalElements}
+              {visible.length} av {totalElements}
             </div>
           </div>
         </div>
@@ -244,13 +264,13 @@ export default function Lag() {
 
         {!loading && !error && (
           <>
-            {filtered.length === 0 ? (
+            {visible.length === 0 ? (
               <div className="mt-6 rounded-3xl border border-sky-100 bg-white p-6 text-sm text-sky-900/70 shadow-sm">
                 Ingen treff på disse filtrene.
               </div>
             ) : (
               <ul className="mt-6 grid gap-4">
-                {filtered.map((item) => {
+                {visible.map((item) => {
                   const homepage = normUrl(item.hjemmeside);
                   const etablertDato =
                     item.stiftelsesdato ?? item.registreringsdatoEnhetsregisteret;
@@ -348,7 +368,6 @@ export default function Lag() {
                                     </a>
                                   </>
                                 )}
-                                
                               </div>
                             )}
 
@@ -395,7 +414,7 @@ export default function Lag() {
                 Forrige
               </button>
               <div className="text-sm text-sky-900/70">
-                Side {page + 1} av {Math.max(1, totalPages)}
+                Side {page + 1} av {totalPages}
               </div>
               <button
                 onClick={() =>
