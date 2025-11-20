@@ -32,6 +32,9 @@ interface Enhet {
 
   // Beholdes i tilfelle du vil vise senere
   organisasjonsform?: { kode?: string };
+
+  // **NYTT**: for idrettsfilter (SN/NACE)
+  naeringskode1?: { kode?: string; beskrivelse?: string };
 }
 
 // Avled statuskode og -label fra flaggene
@@ -49,6 +52,9 @@ export default function Lag() {
   const [page, setPage] = useState(0);
   const [size, setSize] = useState(50);
   const [statusFilter, setStatusFilter] = useState<"" | "aktiv" | "avvik" | "konkurs">("");
+
+  // **NYTT**: filter for idrettslag (SN 93.12)
+  const [sportFilter, setSportFilter] = useState<boolean>(false);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -108,7 +114,7 @@ export default function Lag() {
   // Nullstill side ved søkeendring/størrelse/filter
   useEffect(() => {
     setPage(0);
-  }, [query, size, statusFilter]);
+  }, [query, size, statusFilter, sportFilter]);
 
   // Hent ALLE FLI i Bamble én gang, så søker vi lokalt
   useEffect(() => {
@@ -157,6 +163,12 @@ export default function Lag() {
     // søk i NAVN – gir treff på "idrett" i "IDRETTSLAG"
     const matchesQuery = q ? e.navn.toLowerCase().includes(q) : true;
     if (!matchesQuery) return false;
+
+    // **NYTT**: idrettsfilter via næringskode 93.12 (eller 93.120)
+    if (sportFilter) {
+      const code = e.naeringskode1?.kode ?? "";
+      if (!code.startsWith("93.12")) return false;
+    }
 
     // statusfilter som før
     if (!statusFilter) return true;
@@ -223,7 +235,7 @@ export default function Lag() {
             </select>
           </div>
 
-          {/* Statusfilter (bruker avledet status) */}
+          {/* Status  */}
           <div className="col-span-6 md:col-span-2">
             <label className="mb-1 block text-sm font-medium text-sky-900">
               Status
@@ -248,6 +260,24 @@ export default function Lag() {
               {visible.length} av {totalElements}
             </div>
           </div>
+
+          {/* Kun idrettslag (SN 93.12) – egen kolonne */}
+  <div className="col-span-12 md:col-span-2 flex items-end">
+    <label className="inline-flex items-center gap-2 text-sm text-sky-900">
+      <input
+        type="checkbox"
+        className="h-4 w-4 accent-sky-600"
+        checked={sportFilter}
+        onChange={(e) => setSportFilter(e.target.checked)}
+      />
+      <span className="leading-tight">
+        Vis kun idrettslag
+        
+      </span>
+    </label>
+  </div>
+
+          
         </div>
 
         {/* Resultat */}
